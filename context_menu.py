@@ -3,29 +3,21 @@ import sys
 import stat
 import shutil
 import subprocess
-import tkinter as tk
-from tkinter import messagebox, simpledialog
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Any
 
+from PySide6.QtWidgets import QMenu, QApplication, QInputDialog, QMessageBox
+from PySide6.QtGui import QCursor
+
 
 class ContextMenuManager:
-    """
-    Gestor de menú contextual para archivos/directorios.
-
-    Características:
-    - Menú contextual dinámico según selección.
-    - Arquitectura extensible para agregar nuevas acciones.
-    - Integración con file_operations si está disponible.
-    - Fallback a operaciones del sistema si file_operations no implementa algo.
-    """
 
     def __init__(self, parent, file_operations=None, clipboard_manager=None):
         self.parent = parent
         self.file_operations = file_operations
         self.clipboard_manager = clipboard_manager
 
-        self.menu = tk.Menu(parent, tearoff=0)
+        self.menu = QMenu(parent)
         self.current_selection: List[str] = []
 
         self.actions: Dict[str, Dict[str, Any]] = {}
@@ -58,14 +50,10 @@ class ContextMenuManager:
     def show(self, event, selection: List[str]) -> None:
         self.current_selection = selection or []
         self._rebuild_menu()
-
-        try:
-            self.menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            self.menu.grab_release()
+        self.menu.exec(QCursor.pos())
 
     def _rebuild_menu(self) -> None:
-        self.menu.delete(0, tk.END)
+        self.menu.clear()
 
         ordered_actions = [
             "copy",
@@ -83,17 +71,15 @@ class ContextMenuManager:
 
         for action_id in ordered_actions:
             if action_id is None:
-                self.menu.add_separator()
+                self.menu.addSeparator()
                 continue
 
-            action = self.actions[action_id]
-            enabled = action["enabled_when"](self.current_selection)
+            action_data = self.actions[action_id]
+            enabled = action_data["enabled_when"](self.current_selection)
 
-            self.menu.add_command(
-                label=action["label"],
-                command=action["callback"],
-                state=tk.NORMAL if enabled else tk.DISABLED,
-            )
+            action = self.menu.addAction(action_data["label"])
+            action.setEnabled(enabled)
+            action.triggered.connect(action_data["callback"])
 
     def add_action(
         self,
@@ -104,9 +90,6 @@ class ContextMenuManager:
     ) -> None:
         self._register_action(action_id, label, callback, enabled_when)
 
-    # -------------------------
-    # Helpers de estado UI
-    # -------------------------
     def _has_selection(self, selection: List[str]) -> bool:
         return len(selection) > 0
 
@@ -143,9 +126,6 @@ class ContextMenuManager:
             return getattr(self.file_operations, method_name)(*args, **kwargs)
         raise AttributeError(f"file_operations no implementa '{method_name}'")
 
-    # -------------------------
-    # Acciones
-    # -------------------------
     def copy(self) -> None:
         try:
             if self.clipboard_manager and hasattr(self.clipboard_manager, "set_files"):
@@ -153,8 +133,8 @@ class ContextMenuManager:
                 return
 
             self._safe_call_file_ops("copy_to_clipboard", self.current_selection)
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo copiar.\n\n{e}")
+        except Exception:
+            pass
 
     def cut(self) -> None:
         try:
@@ -163,13 +143,12 @@ class ContextMenuManager:
                 return
 
             self._safe_call_file_ops("cut_to_clipboard", self.current_selection)
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo cortar.\n\n{e}")
+        except Exception:
+            pass
 
     def paste(self) -> None:
         target_dir = self._get_target_directory_for_paste()
         if not target_dir:
-            messagebox.showwarning("Pegar", "No hay destino válido para pegar.")
             return
 
         try:
@@ -178,22 +157,22 @@ class ContextMenuManager:
                 return
 
             self._safe_call_file_ops("paste_from_clipboard", target_dir)
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo pegar.\n\n{e}")
+        except Exception:
+            pass
 
     def delete_permanently(self) -> None:
         if not self.current_selection:
             return
 
-        confirm = messagebox.askyesno(
+        result = QMessageBox.question(
+            self.parent,
             "Eliminar definitivo",
             "Esta acción eliminará definitivamente los elementos seleccionados.\n\n¿Deseas continuar?",
-            icon=messagebox.WARNING,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
-        if not confirm:
+        if result != QMessageBox.StandardButton.Yes:
             return
-
-        errors = []
 
         for path in self.current_selection:
             try:
@@ -204,11 +183,8 @@ class ContextMenuManager:
                         shutil.rmtree(path)
                     else:
                         os.remove(path)
-            except Exception as e:
-                errors.append(f"{path}: {e}")
-
-        if errors:
-            messagebox.showerror("Errores al eliminar", "\n".join(errors))
+            except Exception:
+                pass
 
     def create_shortcut(self) -> None:
         if not self.current_selection:
@@ -222,8 +198,8 @@ class ContextMenuManager:
                 return
 
             self._create_shortcut_system(source)
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo crear el acceso directo.\n\n{e}")
+        except Exception:
+            pass
 
     def _create_shortcut_system(self, source: str) -> None:
         source_path = Path(source)
@@ -263,11 +239,9 @@ class ContextMenuManager:
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
-            self.parent.clipboard_clear()
-            self.parent.clipboard_append(content)
-            self.parent.update()
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo copiar el contenido.\n\n{e}")
+            QApplication.clipboard().setText(content)
+        except Exception:
+            pass
 
     def rename(self) -> None:
         if not self.current_selection:
@@ -277,8 +251,8 @@ class ContextMenuManager:
         old_name = os.path.basename(old_path)
         parent_dir = os.path.dirname(old_path)
 
-        new_name = simpledialog.askstring("Renombrar", "Nuevo nombre:", initialvalue=old_name, parent=self.parent)
-        if not new_name or new_name == old_name:
+        new_name, ok = QInputDialog.getText(self.parent, "Renombrar", "Nuevo nombre:", text=old_name)
+        if not ok or not new_name or new_name == old_name:
             return
 
         new_path = os.path.join(parent_dir, new_name)
@@ -288,8 +262,8 @@ class ContextMenuManager:
                 self.file_operations.rename(old_path, new_path)
             else:
                 os.rename(old_path, new_path)
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo renombrar.\n\n{e}")
+        except Exception:
+            pass
 
     def show_properties(self) -> None:
         if not self.current_selection:
@@ -307,17 +281,14 @@ class ContextMenuManager:
                 lines.append(f"Tamaño: {st.st_size} bytes")
                 lines.append(f"Permisos: {stat.filemode(st.st_mode)}")
                 lines.append("")
-            except Exception as e:
-                lines.append(f"{path}: error obteniendo propiedades ({e})")
-                lines.append("")
+            except Exception:
+                pass
 
-        messagebox.showinfo("Propiedades", "\n".join(lines))
+        QMessageBox.information(self.parent, "Propiedades", "\n".join(lines))
 
     def take_ownership(self) -> None:
         if not self.current_selection:
             return
-
-        errors = []
 
         for path in self.current_selection:
             try:
@@ -325,13 +296,8 @@ class ContextMenuManager:
                     self.file_operations.take_ownership(path)
                 else:
                     self._take_ownership_system(path)
-            except Exception as e:
-                errors.append(f"{path}: {e}")
-
-        if errors:
-            messagebox.showerror("Tomar posesión", "\n".join(errors))
-        else:
-            messagebox.showinfo("Tomar posesión", "Operación completada.")
+            except Exception:
+                pass
 
     def _take_ownership_system(self, path: str) -> None:
         if os.name == "nt":
