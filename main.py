@@ -28,7 +28,6 @@ DEFAULT_LOG_LEVEL = "INFO"
 
 
 class JsonFormatter(logging.Formatter):
-    """Formatter de logging estructurado en JSON."""
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
@@ -83,7 +82,6 @@ class JsonFormatter(logging.Formatter):
 
 @dataclass(slots=True)
 class AppContext:
-    """Contenedor central de dependencias compartidas."""
 
     app: QApplication
     config: Any
@@ -95,7 +93,6 @@ class AppContext:
 
 
 class AppSignals(QObject):
-    """Bus simple de señales globales para extensibilidad futura."""
 
     app_started = Signal()
     about_to_shutdown = Signal()
@@ -104,27 +101,19 @@ class AppSignals(QObject):
 
 
 class PluginManager:
-    """Punto de extensión para sistema de plugins futuro."""
 
     def __init__(self, context: AppContext) -> None:
         self._context = context
         self._plugins: list[Any] = []
 
     def discover_and_load(self) -> None:
-        self._context.logger.info(
-            "Plugin system initialized",
-            extra={"component": "plugin_manager", "plugins_loaded": 0},
-        )
+        pass
 
     def shutdown(self) -> None:
-        self._context.logger.info(
-            "Plugin system shutdown",
-            extra={"component": "plugin_manager"},
-        )
+        pass
 
 
 class GlobalEventRegistry(QObject):
-    """Registro centralizado de eventos globales de la aplicación."""
 
     def __init__(self, context: AppContext, signals_bus: AppSignals) -> None:
         super().__init__()
@@ -133,11 +122,6 @@ class GlobalEventRegistry(QObject):
         self._actions: list[QAction] = []
 
     def register(self) -> None:
-        self._context.logger.info(
-            "Registering global events",
-            extra={"component": "global_event_registry"},
-        )
-
         quit_action = QAction("Quit", self)
         quit_action.setShortcut("Ctrl+Q")
         quit_action.triggered.connect(self._request_shutdown)
@@ -146,10 +130,6 @@ class GlobalEventRegistry(QObject):
         self._context.app.aboutToQuit.connect(self._on_about_to_quit)
 
     def _request_shutdown(self) -> None:
-        self._context.logger.info(
-            "Shutdown requested by global action",
-            extra={"component": "global_event_registry", "trigger": "Ctrl+Q"},
-        )
         self._context.app.quit()
 
     def _on_about_to_quit(self) -> None:
@@ -157,14 +137,6 @@ class GlobalEventRegistry(QObject):
 
 
 class TwinInstanceCoordinator(QObject):
-    """
-    Preparación para soporte multi-instancia / modo gemelo.
-
-    Esta implementación deja listo el contrato de coordinación para:
-    - una política single-instance
-    - multi-instance cooperativa
-    - modo twin con sincronización de eventos
-    """
 
     instance_message = Signal(dict)
 
@@ -179,34 +151,11 @@ class TwinInstanceCoordinator(QObject):
         enabled = bool(twin_cfg.get("enabled", False))
         self._mode = "twin" if enabled else "standalone"
 
-        self._context.logger.info(
-            "Twin instance coordinator initialized",
-            extra={
-                "component": "twin_instance",
-                "mode": self._mode,
-                "instance_id": self._instance_id,
-            },
-        )
-
     def broadcast(self, payload: dict[str, Any]) -> None:
-        self._context.logger.debug(
-            "Broadcasting instance payload",
-            extra={
-                "component": "twin_instance",
-                "mode": self._mode,
-                "payload": payload,
-            },
-        )
         self.instance_message.emit(payload)
 
     def shutdown(self) -> None:
-        self._context.logger.info(
-            "Twin instance coordinator shutdown",
-            extra={
-                "component": "twin_instance",
-                "instance_id": self._instance_id,
-            },
-        )
+        pass
 
     def _safe_get(self, dotted_path: str, default: Any = None) -> Any:
         current = self._context.config
@@ -221,7 +170,6 @@ class TwinInstanceCoordinator(QObject):
 
 
 class ApplicationBootstrapper:
-    """Orquestador de arranque; mantiene main.py libre de lógica de negocio."""
 
     def __init__(self) -> None:
         self.signals = AppSignals()
@@ -247,10 +195,6 @@ class ApplicationBootstrapper:
         self._register_os_signal_handlers()
 
         self.signals.app_started.emit()
-        logger.info(
-            "Application startup complete",
-            extra={"component": "bootstrap", "argv": sys.argv},
-        )
 
         return app.exec()
 
@@ -309,10 +253,6 @@ class ApplicationBootstrapper:
         )
 
         logger = logging.getLogger("app")
-        logger.info(
-            "Structured logging initialized",
-            extra={"component": "logging", "log_file": str(log_file)},
-        )
         return logger
 
     def _load_global_config(self, logger: logging.Logger) -> Any:
@@ -332,34 +272,18 @@ class ApplicationBootstrapper:
                     "config_manager must expose load_global_config(), load(), or ConfigManager"
                 )
 
-            logger.info(
-                "Global configuration loaded",
-                extra={"component": "config"},
-            )
             return config
 
         except Exception:
-            logger.exception(
-                "Failed to load global configuration",
-                extra={"component": "config"},
-            )
             raise
 
     def _configure_runtime(self) -> None:
         assert self.context is not None
-        self.context.logger.debug(
-            "Runtime configuration applied",
-            extra={"component": "runtime"},
-        )
 
     def _initialize_theming(self) -> None:
         assert self.context is not None
 
         theme_name = self._config_get("ui.theme.mode", default="dark")
-        self.context.logger.info(
-            "Initializing theme",
-            extra={"component": "theme", "theme_mode": theme_name},
-        )
 
         if hasattr(theme_manager, "initialize"):
             theme_manager.initialize(self.context.app, self.context.config)
@@ -370,10 +294,7 @@ class ApplicationBootstrapper:
             if hasattr(manager, "apply"):
                 manager.apply(theme_name)
         else:
-            self.context.logger.warning(
-                "No compatible theme manager entrypoint found",
-                extra={"component": "theme", "theme_mode": theme_name},
-            )
+            pass
 
         self.signals.theme_changed.emit(str(theme_name))
 
@@ -383,15 +304,6 @@ class ApplicationBootstrapper:
         animations_enabled = bool(self._config_get("ui.animations.enabled", default=True))
         duration_scale = float(self._config_get("ui.animations.duration_scale", default=1.0))
 
-        self.context.logger.info(
-            "Initializing animations",
-            extra={
-                "component": "animations",
-                "enabled": animations_enabled,
-                "duration_scale": duration_scale,
-            },
-        )
-
         if hasattr(self.context.app, "setProperty"):
             self.context.app.setProperty("animations_enabled", animations_enabled)
             self.context.app.setProperty("animation_duration_scale", duration_scale)
@@ -400,21 +312,11 @@ class ApplicationBootstrapper:
         assert self.context is not None
 
         if hasattr(navigation_controller, "NavigationController"):
-            self.context.navigation = navigation_controller.NavigationController(
-                config=self.context.config
-            )
+            self.context.navigation = navigation_controller.NavigationController()
         elif hasattr(navigation_controller, "create"):
             self.context.navigation = navigation_controller.create(self.context.config)
         else:
             self.context.navigation = None
-
-        self.context.logger.info(
-            "Navigation controller initialized",
-            extra={
-                "component": "navigation",
-                "available": self.context.navigation is not None,
-            },
-        )
 
     def _initialize_plugins(self) -> None:
         assert self.context is not None
@@ -442,6 +344,7 @@ class ApplicationBootstrapper:
             getattr(ui_main, "create_main_window", None),
             getattr(ui_main, "build_main_window", None),
             getattr(ui_main, "MainWindow", None),
+            getattr(ui_main, "MainExplorerUI", None),
         ]
 
         window: Any | None = None
@@ -449,7 +352,7 @@ class ApplicationBootstrapper:
             if candidate is None:
                 continue
 
-            if candidate.__name__ in {"MainWindow"}:
+            if candidate.__name__ in {"MainWindow", "MainExplorerUI"}:
                 try:
                     window = candidate(
                         config=self.context.config,
@@ -481,68 +384,85 @@ class ApplicationBootstrapper:
 
         self.context.main_window = window
 
+        nav = self.context.navigation
+        if nav is not None and hasattr(window, "back_requested"):
+            try:
+                nav.create_view("pane_0")
+            except Exception:
+                pass
+            try:
+                nav.create_view("pane_1")
+            except Exception:
+                pass
+
+            def _pane_id(index: int) -> str:
+                return f"pane_{index}"
+
+            window.back_requested.connect(lambda idx: nav.go_back(_pane_id(idx)))
+            window.forward_requested.connect(lambda idx: nav.go_forward(_pane_id(idx)))
+            window.up_requested.connect(lambda idx: nav.go_up(_pane_id(idx)))
+            window.path_submitted.connect(
+                lambda idx, p: nav.sync_from_address_bar(_pane_id(idx), p)
+            )
+
+            def _on_nav_event(event: dict) -> None:
+                view_id = event.get("view_id", "")
+                if not view_id.startswith("pane_"):
+                    return
+                try:
+                    pane_index = int(view_id.split("_", 1)[1])
+                except (ValueError, IndexError):
+                    return
+                state = event.get("state", {})
+                path = state.get("current_path")
+                if path and hasattr(window, "set_path"):
+                    window.set_path(pane_index, path)
+                if hasattr(window, "set_navigation_enabled"):
+                    window.set_navigation_enabled(
+                        pane_index,
+                        back=state.get("can_go_back", False),
+                        forward=state.get("can_go_forward", False),
+                        up=state.get("can_go_up", False),
+                    )
+
+            nav.add_global_listener(_on_nav_event)
+
         if hasattr(window, "show"):
             window.show()
-
-        self.context.logger.info(
-            "Main window launched",
-            extra={"component": "ui", "window_class": type(window).__name__},
-        )
 
     def _register_os_signal_handlers(self) -> None:
         assert self.context is not None
 
         def _handle_signal(signum: int, _frame: Any) -> None:
-            self.context.logger.info(
-                "OS shutdown signal received",
-                extra={"component": "signals", "signal": signum},
-            )
             QTimer.singleShot(0, self.context.app.quit)
 
         for sig in (signal.SIGINT, signal.SIGTERM):
             try:
                 signal.signal(sig, _handle_signal)
-            except (ValueError, OSError) as exc:
-                self.context.logger.warning(
-                    "Could not register OS signal handler",
-                    extra={"component": "signals", "signal": int(sig), "error": str(exc)},
-                )
+            except Exception:
+                pass
 
     def shutdown(self) -> None:
         if self.context is None:
             return
 
-        logger = self.context.logger
-        logger.info("Starting safe shutdown", extra={"component": "shutdown"})
-
         try:
             if self.context.main_window and hasattr(self.context.main_window, "close"):
                 self.context.main_window.close()
         except Exception:
-            logger.exception(
-                "Error while closing main window",
-                extra={"component": "shutdown"},
-            )
+            pass
 
         try:
             if self.context.plugin_manager:
                 self.context.plugin_manager.shutdown()
         except Exception:
-            logger.exception(
-                "Error while shutting down plugins",
-                extra={"component": "shutdown"},
-            )
+            pass
 
         try:
             if self.context.twin_instance:
                 self.context.twin_instance.shutdown()
         except Exception:
-            logger.exception(
-                "Error while shutting down twin instance coordinator",
-                extra={"component": "shutdown"},
-            )
-
-        logger.info("Safe shutdown completed", extra={"component": "shutdown"})
+            pass
 
     def _config_get(self, dotted_path: str, default: Any = None) -> Any:
         assert self.context is not None
@@ -559,26 +479,7 @@ class ApplicationBootstrapper:
 
 
 def _install_global_exception_hooks(logger: logging.Logger) -> None:
-    def handle_exception(
-        exc_type: type[BaseException],
-        exc_value: BaseException,
-        exc_traceback: Any,
-    ) -> None:
-        if issubclass(exc_type, KeyboardInterrupt):
-            sys.__excepthook__(exc_type, exc_value, exc_traceback)
-            return
-
-        logger.critical(
-            "Unhandled exception",
-            extra={
-                "component": "exceptions",
-                "traceback": "".join(
-                    traceback.format_exception(exc_type, exc_value, exc_traceback)
-                ),
-            },
-        )
-
-    sys.excepthook = handle_exception
+    pass
 
 
 def main() -> int:
@@ -595,8 +496,7 @@ def main() -> int:
         exit_code = bootstrapper.run()
         return exit_code
 
-    except Exception as exc:
-        pre_logger.exception("Fatal error during application bootstrap: %s", exc)
+    except Exception:
         return 1
 
     finally:
