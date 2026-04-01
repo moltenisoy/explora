@@ -516,27 +516,8 @@ class MainExplorerUI(QMainWindow):
             return self.right_pane
         raise IndexError(f"Pane index inválido: {index}")
 
+MainWindow = MainExplorerUI
 
-if __name__ == "__main__":
-    app = QApplication([])
 
-    window = MainExplorerUI()
-    window.set_favorites(
-        [
-            ("Inicio", "/home/user"),
-            ("Documentos", "/home/user/Documents"),
-            ("Descargas", "/home/user/Downloads"),
-        ]
-    )
-    window.set_active_units(
-        [
-            ("Disco local (C:)", "C:/"),
-            ("Datos (D:)", "D:/"),
-            ("USB", "E:/"),
-        ]
-    )
-    window.set_path(0, "C:/Users/demo")
-    window.set_navigation_enabled(0, back=True, forward=False, up=True)
-    window.show()
-
-    app.exec()
+def create_main_window(**kwargs):
+    return MainExplorerUI()
