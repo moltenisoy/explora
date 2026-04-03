@@ -6,7 +6,6 @@ import logging.config
 import os
 import signal
 import sys
-import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -25,6 +24,7 @@ APP_NAME = "ModernWindowsFileExplorer"
 APP_ORG_NAME = "YourCompany"
 APP_ORG_DOMAIN = "local.app"
 DEFAULT_LOG_LEVEL = "INFO"
+WINDOWS_DEFAULT_CONFIG_PATH = str(Path.home() / "AppData" / "Roaming" / "explora" / "config.json")
 
 
 class JsonFormatter(logging.Formatter):
@@ -262,11 +262,11 @@ class ApplicationBootstrapper:
             elif hasattr(config_manager, "load"):
                 config = config_manager.load()
             elif hasattr(config_manager, "ConfigManager"):
-                manager = config_manager.ConfigManager()
-                if hasattr(manager, "load"):
-                    config = manager.load()
-                else:
-                    config = manager
+                manager = config_manager.ConfigManager(
+                    storage_backend="json",
+                    storage_path=WINDOWS_DEFAULT_CONFIG_PATH,
+                )
+                config = manager
             else:
                 raise RuntimeError(
                     "config_manager must expose load_global_config(), load(), or ConfigManager"
@@ -275,6 +275,7 @@ class ApplicationBootstrapper:
             return config
 
         except Exception:
+            logger.exception("No se pudo cargar la configuración global.")
             raise
 
     def _configure_runtime(self) -> None:
@@ -285,16 +286,12 @@ class ApplicationBootstrapper:
 
         theme_name = self._config_get("ui.theme.mode", default="dark")
 
-        if hasattr(theme_manager, "initialize"):
-            theme_manager.initialize(self.context.app, self.context.config)
-        elif hasattr(theme_manager, "apply_theme"):
-            theme_manager.apply_theme(self.context.app, theme_name, self.context.config)
-        elif hasattr(theme_manager, "ThemeManager"):
+        if hasattr(theme_manager, "ThemeManager"):
             manager = theme_manager.ThemeManager(self.context.app, self.context.config)
-            if hasattr(manager, "apply"):
-                manager.apply(theme_name)
-        else:
-            pass
+            if hasattr(manager, "set_theme"):
+                manager.set_theme(str(theme_name))
+            elif hasattr(manager, "apply_current_theme"):
+                manager.apply_current_theme()
 
         self.signals.theme_changed.emit(str(theme_name))
 
@@ -440,7 +437,7 @@ class ApplicationBootstrapper:
             try:
                 signal.signal(sig, _handle_signal)
             except Exception:
-                pass
+                self.context.logger.debug("No se pudo registrar la señal %s", sig)
 
     def shutdown(self) -> None:
         if self.context is None:
@@ -450,24 +447,30 @@ class ApplicationBootstrapper:
             if self.context.main_window and hasattr(self.context.main_window, "close"):
                 self.context.main_window.close()
         except Exception:
-            pass
+            self.context.logger.exception("Error al cerrar la ventana principal.")
 
         try:
             if self.context.plugin_manager:
                 self.context.plugin_manager.shutdown()
         except Exception:
-            pass
+            self.context.logger.exception("Error al cerrar plugins.")
 
         try:
             if self.context.twin_instance:
                 self.context.twin_instance.shutdown()
         except Exception:
-            pass
+            self.context.logger.exception("Error al cerrar soporte de instancias.")
 
     def _config_get(self, dotted_path: str, default: Any = None) -> Any:
         assert self.context is not None
 
         current = self.context.config
+        if hasattr(current, "get") and callable(getattr(current, "get")):
+            try:
+                return current.get(dotted_path, default)
+            except Exception:
+                return default
+
         for part in dotted_path.split("."):
             if isinstance(current, dict):
                 current = current.get(part, default)
@@ -479,12 +482,20 @@ class ApplicationBootstrapper:
 
 
 def _install_global_exception_hooks(logger: logging.Logger) -> None:
-    pass
+    def _handle_exception(exc_type, exc_value, exc_traceback) -> None:
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        logger.critical(
+            "Excepción no controlada",
+            exc_info=(exc_type, exc_value, exc_traceback),
+        )
+
+    sys.excepthook = _handle_exception
 
 
 def main() -> int:
     bootstrapper = ApplicationBootstrapper()
-    pre_logger = logging.getLogger("bootstrap")
 
     try:
         logging.basicConfig(level=logging.INFO)
@@ -497,6 +508,7 @@ def main() -> int:
         return exit_code
 
     except Exception:
+        logging.getLogger("app.bootstrap").exception("Fallo fatal al iniciar la aplicación.")
         return 1
 
     finally:

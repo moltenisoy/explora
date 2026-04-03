@@ -94,7 +94,7 @@ class TwinModeManager:
         state = PanelState(
             panel_id=panel_id,
             container_id=container_id,
-            instance=panel_id,
+            instance=instance,
             active=True,
             current_location=current_location,
             metadata=metadata or {},
@@ -129,7 +129,7 @@ class TwinModeManager:
         secondary = PanelState(
             panel_id=self.SECONDARY_PANEL_ID,
             container_id=secondary_container_id,
-            instance=self.SECONDARY_PANEL_ID,
+            instance=None,
             active=False,
             current_location=None,
             metadata=metadata or {},
