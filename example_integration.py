@@ -1,5 +1,12 @@
+from __future__ import annotations
+
 from PySide6.QtWidgets import QTreeView
-from drag_drop_manager import DragDropManager, FileOperationsAdapter, build_default_drop_target_resolver
+
+from drag_drop_manager import (
+    DragDropManager,
+    FileOperationsAdapter,
+    build_default_drop_target_resolver,
+)
 
 class MyFileOps(FileOperationsAdapter):
     def __init__(self, file_operations_module):
@@ -29,15 +36,16 @@ def current_dir_getter(view):
 def panel_id_getter(view):
     return view.objectName()
 
-manager = DragDropManager(
-    file_operations=MyFileOps(file_operations),
-    panel_id_getter=panel_id_getter,
-    current_dir_getter=current_dir_getter,
-    selected_paths_getter=selected_paths_getter,
-    drop_target_resolver=build_default_drop_target_resolver(),
-    confirm_external_move=False,
-    enable_context_menu_on_ambiguous_drop=False,
-)
-
-manager.register_view(left_panel_view)
-manager.register_view(right_panel_view)
+def create_drag_drop_manager(file_operations_module, left_panel_view: QTreeView, right_panel_view: QTreeView) -> DragDropManager:
+    manager = DragDropManager(
+        file_operations=MyFileOps(file_operations_module),
+        panel_id_getter=panel_id_getter,
+        current_dir_getter=current_dir_getter,
+        selected_paths_getter=selected_paths_getter,
+        drop_target_resolver=build_default_drop_target_resolver(),
+        confirm_external_move=False,
+        enable_context_menu_on_ambiguous_drop=False,
+    )
+    manager.register_view(left_panel_view)
+    manager.register_view(right_panel_view)
+    return manager
