@@ -4,7 +4,7 @@ setlocal
 echo [1/4] Verificando Python...
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo ERROR: Python no esta instalado o no esta en PATH.
+    echo ERROR: Python no está instalado o no está en PATH.
     exit /b 1
 )
 
